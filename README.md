@@ -1,0 +1,1 @@
+Consumo API publica do Mercado Bitcoin
