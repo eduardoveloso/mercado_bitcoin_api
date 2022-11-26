@@ -4,6 +4,9 @@ from abc import ABC, abstractmethod
 import datetime
 from typing import List, Union
 import json
+import os
+from schedule import repeat, every, run_pending
+import time
 
 #construir o log
 #__name__ utilizará o nome do script para nomear o log
@@ -41,7 +44,6 @@ class TradesApi(MercadoBitcoinApi):
         return int(date.timestamp())
 
     def _get_endpoint(self, date_from: datetime.datetime = None, date_to: datetime.datetime = None) -> str:
-        
         if date_from and not date_to:
             unix_date_from = self._get_unix_epoch(date_from)
             endpoint = f'{self.base_endpoint}/{self.coin}/{self.type}/{unix_date_from}'
@@ -61,10 +63,13 @@ class DataTypeNotSupportedForIngestionException(Exception):
         super().__init__(self.message)
 
 class DataWriter():
-    def __init__(self, filename: str) -> None:
-        self.filename = filename
+    def __init__(self, coin: str, api: str) -> None:
+        self.coin = coin
+        self.api = api
+        self.filename = f'{self.api}/{self.coin}/{datetime.datetime.now()}.json'
 
     def _write_row(self, row: str) -> None:
+        os.makedirs(os.path.dirname(self.filename), exist_ok=True)
         with open(self.filename, 'a') as f:
             f.write(row)
 
@@ -76,3 +81,43 @@ class DataWriter():
                 self.write(element)
         else:
             raise DataTypeNotSupportedForIngestionException(data)
+
+class DataIngestor(ABC):
+    def __init__(self, coins: List[str], default_start_date: datetime.date, writer: DataWriter) -> None:
+        self.coins = coins
+        self.default_start_date = default_start_date
+        self.writer = writer
+        self._checkpoint = None
+
+    def _get_checkpoint(self):
+        if not self._checkpoint:
+            return self.default_start_date
+        else:
+            return self._checkpoint
+
+    def _update_checkpoint(self, value):
+        self._checkpoint = value
+
+    @abstractmethod
+    def ingest() -> None:
+        pass
+
+class DaySummaryIngestor(DataIngestor):
+    def ingest(self) -> None:
+        date = self._get_checkpoint()
+        if date < datetime.date.today():
+            for coin in self.coins:
+                api = DaySummaryApi(coin=coin)
+                data = api.get_data(date=date)
+                self.writer(coin=coin, api=api.type).write(data=data)
+            self._update_checkpoint(date + datetime.timedelta(days=1))
+
+ingestor = DaySummaryIngestor(writer=DataWriter, coins=['BTC', 'ETH', 'LTC'], default_start_date=datetime.date(2022,11,23))    
+
+@repeat(every(1).seconds)
+def job():
+    ingestor.ingest() 
+
+while True:
+    run_pending()
+    time.sleep(0.5)
