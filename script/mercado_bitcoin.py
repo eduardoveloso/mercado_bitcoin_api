@@ -2,6 +2,8 @@ import requests
 import logging
 from abc import ABC, abstractmethod
 import datetime
+from typing import List, Union
+import json
 
 #construir o log
 #__name__ utilizará o nome do script para nomear o log
@@ -16,7 +18,6 @@ class MercadoBitcoinApi(ABC):
     @abstractmethod
     def _get_endpoint(self, **kwargs) -> str:
         #metodo interno que nao sera acessivel externamente, nao estara exposto
-        #return f'{self.base_endpoint}/{self.coin}/day-summary/2022/11/23'
         #metodo abstrato nao definido nessa classe
         pass
 
@@ -32,8 +33,6 @@ class DaySummaryApi(MercadoBitcoinApi):
 
     def _get_endpoint(self, date: datetime.date) -> str:
         return f'{self.base_endpoint}/{self.coin}/{self.type}/{date.year}/{date.month}/{date.day}'
-
-#print(DaySummaryApi(coin='BTC').get_data(date=datetime.date(2022,11,18)))
 
 class TradesApi(MercadoBitcoinApi):
     type = 'trades'
@@ -55,6 +54,28 @@ class TradesApi(MercadoBitcoinApi):
         
         return endpoint
 
-#print(TradesApi(coin='BTC').get_data())
-#print(TradesApi(coin='BTC').get_data(date_from=datetime.datetime(2022,11,18)))
-#print(TradesApi(coin='BTC').get_data(date_from=datetime.datetime(2022,11,18), date_to=datetime.datetime(2022,11,20)))
+class DataWriter():
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+
+    def _write_row(self, row: str) -> None:
+        with open(self.filename, 'a') as f:
+            f.write(row)
+
+    def write(self, data: Union[List, dict]) -> None:
+        if isinstance(data, dict):
+            self._write_row(json.dumps(data) + '\n')
+        if isinstance(data, List):
+            for element in data:
+                self.write(element)
+
+
+
+
+# data = DaySummaryApi(coin='BTC').get_data(date=datetime.date(2022,11,21))
+# writer = DataWriter('day_summary.json')
+# writer.write(data)
+
+data = TradesApi(coin='BTC').get_data(date_from=datetime.datetime(2022,11,21), date_to=datetime.datetime(2022,11,22))
+writer = DataWriter('trades.json')
+writer.write(data)
