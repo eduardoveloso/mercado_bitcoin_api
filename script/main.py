@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 import datetime
 from schedule import repeat, every, run_pending
 import time
