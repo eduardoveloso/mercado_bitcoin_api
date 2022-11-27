@@ -1,10 +1,10 @@
-import requests
-import logging
 from abc import ABC, abstractmethod
 import datetime
+import logging
+from backoff import expo, on_exception
+import ratelimit
+import requests
 
-#construir o log
-#__name__ utilizará o nome do script para nomear o log
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -16,10 +16,12 @@ class MercadoBitcoinApi(ABC):
     @abstractmethod
     def _get_endpoint(self, **kwargs) -> str:
         #metodo interno que nao sera acessivel externamente, nao estara exposto
-        #return f'{self.base_endpoint}/{self.coin}/day-summary/2022/11/23'
         #metodo abstrato nao definido nessa classe
         pass
 
+    @on_exception(expo, ratelimit.exception.RateLimitException, max_tries=10)
+    @ratelimit.limits(calls=29, period=30)
+    @on_exception(expo, requests.exceptions.HTTPError, max_tries=10)
     def get_data(self, **kwargs) -> dict:
         endpoint = self._get_endpoint(**kwargs)
         logger.info(f'Getting data from endpoint: {endpoint}')
@@ -33,8 +35,6 @@ class DaySummaryApi(MercadoBitcoinApi):
     def _get_endpoint(self, date: datetime.date) -> str:
         return f'{self.base_endpoint}/{self.coin}/{self.type}/{date.year}/{date.month}/{date.day}'
 
-#print(DaySummaryApi(coin='BTC').get_data(date=datetime.date(2022,11,18)))
-
 class TradesApi(MercadoBitcoinApi):
     type = 'trades'
 
@@ -42,7 +42,6 @@ class TradesApi(MercadoBitcoinApi):
         return int(date.timestamp())
 
     def _get_endpoint(self, date_from: datetime.datetime = None, date_to: datetime.datetime = None) -> str:
-        
         if date_from and not date_to:
             unix_date_from = self._get_unix_epoch(date_from)
             endpoint = f'{self.base_endpoint}/{self.coin}/{self.type}/{unix_date_from}'
@@ -54,7 +53,3 @@ class TradesApi(MercadoBitcoinApi):
             endpoint = f'{self.base_endpoint}/{self.coin}/{self.type}'
         
         return endpoint
-
-#print(TradesApi(coin='BTC').get_data())
-#print(TradesApi(coin='BTC').get_data(date_from=datetime.datetime(2022,11,18)))
-#print(TradesApi(coin='BTC').get_data(date_from=datetime.datetime(2022,11,18), date_to=datetime.datetime(2022,11,20)))
